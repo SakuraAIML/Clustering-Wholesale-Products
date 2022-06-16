@@ -1,8 +1,7 @@
-The Application of Unsupervised Learning Techniques in Analysing
-Wholesale Data
+Clustering Wholesale Products
 ================
 Zarina
-19/05/2022
+16/06/2022
 
 # Motivation
 
