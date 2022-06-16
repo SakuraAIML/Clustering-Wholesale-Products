@@ -48,9 +48,6 @@ further improve the marketing and sale strategies.
 
 # Loading dataset
 
-The dataset consists of six numerical variables corresponding to 440
-measurements of the annual spending on six product categories.
-
 ``` r
 #1. Loading dataset ----
 dat <- read.csv("Wholesale_customers_miss.csv",
