@@ -1,0 +1,1064 @@
+---
+title: "Clustering Wholesale Products"
+author: "Zarina"
+date: "16/06/2022"
+output: github_document
+fig_width: 6 
+fig_height: 4
+---
+---
+title: "The Application of Unsupervised Learning Techniques in Analysing Wholesale Data"
+author: "Zarina"
+date: "19/05/2022"
+output: github_document
+fig_width: 6 
+fig_height: 4
+---
+# Motivation
+
+* Unsupervised learning techniques are of growing importance in a number of fields because these allow interesting patterns and subgroups to be discovered among many observations measured on a set of variables. 
+
+* For instance, in business and marketing, wholesalers might be interested in finding groups of high yield products that are most profitable or have growth potential based on the frequency of transactions. They might also be interested in identifying groups of products that are most frequently purchased together by customers to customise and optimise their sale strategies – e.g., provide a range of offers, prices, promotions, products distributions, or some combinations of marketing segments to increase the chances of products being purchased. Besides that, they might also want to identify groups of customers that share similar profiles, such as purchasing behaviours and histories, so that they can be preferentially shown the products in which they are particularly likely to be interested. 
+
+* Therefore, the main goal of unsupervised learning is not to predict the response 𝑦 as there is no associated response variable 𝑦 in a dataset. Instead, it aims to look for informative patterns and interesting subgroups to mediate the downstream analysis and applications.
+
+## Aim
+
+This report, subsequently, presents the results of the unsupervised learning techniques used – namely, the Principal Components Analysis (PCA) and several clustering algorithms such as K-means/K-medoids, (agglomerative and divisive) hierarchical, and model- based clusterings – in a real dataset which comprises 440 observations corresponding to annual spending in monetary units (m.u) on six product categories (fresh, milk, grocery, frozen, detergents/paper, and delicatessen products). Therefore, the main goal is to discover interesting patterns and homogenous subgroups among these observations to enable the wholesalers to identify interesting products that might be highly correlated to each other or tend to be purchased together, which may further improve the marketing and sale strategies.
+
+# Loading dataset
+
+
+```{r}
+#1. Loading dataset ----
+dat <- read.csv("Wholesale_customers_miss.csv",
+                sep = ",", header = TRUE)
+
+
+names(dat)
+head(dat)
+str(dat)
+
+# change variable name
+#names(dat)[names(dat) == "Detergents_Paper"] <- "Detergents.Paper"
+
+```
+# Data explorations
+
+## Box plots of ALL variables & outliers 
+```{r}
+
+# using ggplot
+library(ggplot2)
+library("reshape2")
+data_long <- melt(dat)
+head(data_long)
+ggplot(data_long,
+       aes(x = variable, y = value, fill = variable)) + ggtitle("Boxplots of all variables")+
+  geom_boxplot() + theme(legend.position = "bottom",
+                         plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Variable", y = "Value"
+                      ) + scale_fill_discrete(name = "Variable")
+```
+* The highest annual spending is recorded on delicatessen products among all products. This is followed by fresh, detergents/paper, grocery, milk, and frozen products.
+
+* In terms of the distribution of each variable, the annual spending on most of the fresh, milk, and grocery products are normally distributed. On the other hand, the annual spending on frozen and detergents/paper products is slightly right-skewed, possibly driven by extreme outliers. It is also worth noting that two distinct peaks are observed around 5 (m.u) and 10 (m.u) for annual spending on delicatessen products.
+
+*  In addition, each variable appears to have extreme outliers, with most variables having two outliers.
+
+```{r}
+## Outliers in Fresh
+out <- boxplot.stats(dat$Fresh)$out
+idx <- which(dat$Fresh %in% c(out))
+dat[idx, c("Fresh")]
+
+## Outliers in Milk
+out <- boxplot.stats(dat$Milk)$out
+idx <- which(dat$Milk %in% c(out))
+dat[idx, c("Milk")]
+
+## Outliers in Grocery
+out <- boxplot.stats(dat$Grocery)$out
+idx <- which(dat$Grocery %in% c(out))
+dat[idx, c("Grocery")]
+
+## Outliers in Frozen
+out <- boxplot.stats(dat$Frozen)$out
+idx <- which(dat$Frozen %in% c(out))
+dat[idx, c("Frozen")]
+
+## Outliers in Detergents_Paper
+out <- boxplot.stats(dat$Detergents_Paper)$out
+idx <- which(dat$Detergents_Paper %in% c(out))
+dat[idx, c("Detergents_Paper")]
+
+## Outliers in Delicatessen
+out <- boxplot.stats(dat$Delicatessen)$out
+idx <- which(dat$Delicatessen %in% c(out))
+dat[idx, c("Delicatessen")]
+```
+
+## Histograms 
+```{r}
+
+# using ggplot
+ggplot(data_long,
+       aes(x = value, fill = variable))+
+  geom_histogram(aes(y = ..density..)
+                 )+
+  geom_density(lwd = 0.5, col = "red", alpha = 0.01)+ 
+  facet_wrap(~variable, scales = "free") +
+  ggtitle("Density Distributions")+
+  theme(legend.position = "bottom", plot.title = element_text(face = "bold", h = 0.5))+
+  labs(x = "Value", y = "Density") +
+  scale_fill_discrete(name = "Variable")
+
+
+```
+
+## Correlation plot
+
+A correlation matrix plot is also obtained to explore the relationship between the variables in the data set. 
+
+```{r}
+library(corrplot)
+library(RColorBrewer)
+library(psych)
+
+# remove missing values in order to calculate correlation
+data <- na.omit(dat)
+round(cor(data), 2)
+
+corrplot(cor(data), 
+         tl.cex = 0.75, 
+         method = "circle", 
+         type = "upper", order = "hclust", 
+         col = brewer.pal(n=8, name="RdYlBu"), 
+         tl.col = "red", 
+         diag=FALSE )
+
+pairs.panels(data,
+             method = "pearson",
+             hist.col = "steelblue",
+             density = TRUE,
+             ellipses = TRUE)
+```
+* There are three pairs of variables that are highly, positively correlated with each other:Frozen & Grocery (0.95), Frozen & Fresh (0.79), and Grocery & Fresh (0.86). 
+
+* In contrast, two pairs of variables have moderate, negative correlations. These include Milk & Grocery (-0.43) and Milk & Frozen (- 0.38). 
+
+* The rest of the variables are either entirely not correlated with each other (such as most of the variables with Delicatessen) or very weakly, negatively correlated. 
+
+* Overall, there is evidence that the variables Fresh, Grocery, and Frozen share incredibly redundant information, which needs to be tackled to reduce the redundancy.
+
+## Parallel Coordinate Plot 
+```{r}
+library(GGally)
+
+ggparcoord(dat,
+           alphaLines = 0.2,
+           splineFactor = TRUE,
+           scale = "uniminmax") +
+  scale_color_manual("green") +
+ labs(x = "Variable", y = "Value") + ggtitle("Parallel Coordinates Plot") + theme(plot.title = element_text(h = 0.5, face = "bold"))
+```
+
+# Missing values analysis 
+The distribution of missing data can also be visualized via a matrix plot. 
+
+* Indeed, a more significant portion of missing data (red) occurs in the variable Milk than in Delicatessen. In particular, the missing data pattern displays quite apparent independence where the missing data in Delicatessen appear to be random across all observations in the data set. 
+
+* In addition, the upper block of the matrix where high missing data are observed in Delicatessen seems to occur at higher levels of Milk, which is consistent with the results obtained from the margin plot previously (horizontal red boxplots).
+```{r}
+library(mice)
+library(VIM)
+
+sum(is.na(dat))
+md.pattern(dat,  plot = TRUE)
+md.pairs(dat)
+
+scattmatrixMiss(dat)
+
+# cor matrix
+shadow <- as.data.frame(abs(is.na(dat)))
+miss.shadow <- shadow[, which(unlist(lapply(shadow, sum))!=0)]
+round(cor(miss.shadow), 3)
+
+round(cor(dat[!names(dat)%in%c("Milk")],
+          miss.shadow, use = "pairwise.complete.obs"), 3)
+aggr(dat,
+     col = mdc(1:2),
+     numbers = TRUE,
+     sortVars = TRUE,
+     labels = names(dat),
+     cex.axis = .7,
+     gap = 3,
+     ylab = c("Proportion of Missingness", "Missingness Pattern"))
+
+marginplot(dat[, c("Milk", "Delicatessen")],
+           col = mdc(1:2),
+           cex.numbers = 1.2,
+           pch = 19)
+
+
+
+
+names(dat)[names(dat) == "Dtrgnt_Ppr"] <- "Dtrgnt_Pr"
+names(dat)[names(dat) == "Delicatessen"] <- "Delicatessn"
+
+par(mfrow = c(1, 1))
+matrixplot(dat, labels = TRUE, interactive = F, main = "Matrix Plot", sortby = 5)
+
+
+which(is.na(dat$Milk))
+
+
+```
+# 3.1 Multiple imputation 
+
+For this data set, the imputation analysis involves using all variables as predictors to impute the missing values in the variables Milk and Delicatessen using three methods: 
+
+* Predictive mean matching (PMM), which is based on selecting a data point from the original, non- missing data that has a predicted value close to the predicted value of the missing sample
+
+* Bayesian linear regression (NORM)
+
+* Linear regression ignoring model error (NORM.NOB). 
+
+The imputation is repeated ten times, producing ten complete/imputed data sets (m = 10). The quality of the imputation is compared between different methods used. Only one of the completed data sets that matches the observed data well is used for the subsequent analysis.
+```{r}
+# with PMM
+mice_dat <- mice(dat, m = 10, seed = 123)
+summary(mice_dat)
+
+# with (Bayesian) linear regression
+mice_dat2 <- mice(dat, m = 10, seed = 123,
+                  method = c("","norm.nob","", "", "","norm"))
+
+summary(mice_dat2)
+summary(mice_dat2$imp)
+
+
+## extract the 2nd imputed data set
+completed_dat <- complete(mice_dat, 2)
+head(completed_dat)
+
+completed_dat2 <- complete(mice_dat2, 2)
+head(completed_dat2)
+
+require(lattice)
+
+#xyplots 
+library(gridExtra)
+
+xyplot(mice_dat, Milk ~ Delicatessn|as.factor(.imp), pch = 18, cex = 1, main = "PMM")
+xyplot(mice_dat2, Milk ~ Delicatessn|as.factor(.imp), pch = 20,
+               cex = 1.4, main = "(Bayesian) Linear Regression")
+
+
+
+# density plots
+
+densityplot(mice_dat, main = "PMM")
+densityplot(mice_dat2, main = "(Bayesian) Linear Regression")
+
+```
+# PCA 
+
+The data set has also presented evidence for multicollinearity between variables. Thus, there is an undesirably high chance of information redundancy. Therefore, PCA is used to reduce the dimensionality of the data set by keeping only a small number of dimensions or principal components that still explains most of the variability in the data. 
+
+PCA then allows better visualisation of data using fewer representative variables that still retain as much of the information as possible, thus minimising the effects of multicollinearity and information redundancy for downstream analysis. Otherwise, 15 scatterplots will be needed to visualise 440 observations, which will certainly not be possible to look at all of them; moreover, most likely none of them will be informative since they each contain only a small fraction of the total information present in the data set. Therefore, PCA is performed on this data set as part of an exploratory data analysis, and the results of PCA are then subsequently used in clustering.
+
+## Using Scaled data
+To perform PCA, all variables in the imputed data set are first scaled to have mean zero and standard deviation one. This step is considered necessary because performing PCA on unscaled data would cause a greater weightage or importance to be placed onto variables with higher variances than other variables. 
+
+In addition, even though the variables are measured in the same unit (m.u), some products may be purchased more frequently than others. For instance, this data set highlights higher annual spending on delicatessen products than frozen products. If these are not scaled, high-yield purchases like delicatessen products will have a larger effect on inter-products dissimilarities, hence, on the clusters ultimately obtained, than low purchases like frozen products. 
+
+In contrast, if scaling is first performed on the variables, then each variable will, in effect, be given equal importance in the subsequent clustering performed.
+
+```{r}
+library(factoextra)
+pr.out2 <- prcomp(completed_dat2,
+                 scale = TRUE)
+# scree plot
+fviz_screeplot(pr.out2, addlabels = TRUE, barfill = c("#225ea8", "#1d91c0","#41b6c4",
+                                                     "#7fcdbb", "#c7e9b4", "#edf8b1"), 
+               barcolor = c("#0c2c84", "#1d91c0","#41b6c4",
+                            "#7fcdbb", "#c7e9b4", "#edf8b1")) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Principal Component", y = "Percentage of Variance Explained") + ggtitle("PCA on Scaled Data")
+
+
+
+fviz_pca_var(pr.out2,
+                   col.var = "contrib", # Color by contributions to the PC
+                   gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+                   repel = TRUE     # Avoid text overlapping
+) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "First Principal Component (48.7%)", y = "Second Principal Component (17.4%)") + ggtitle("Variables - PCA - Scaled Data")
+# contribution of variables on scaled data to compare
+
+
+```
+## using unscaled data to compare
+
+```{r}
+pr.out <- prcomp(completed_dat2,
+                 scale = FALSE)
+pr.out
+
+# scree plot
+library(factoextra)
+fviz_screeplot(pr.out, addlabels = TRUE, barfill = c("#225ea8", "#1d91c0","#41b6c4",
+                                                     "#7fcdbb", "#c7e9b4", "#edf8b1"), 
+               barcolor = c("#0c2c84", "#1d91c0","#41b6c4",
+                            "#7fcdbb", "#c7e9b4", "#edf8b1")) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Principal Component", y = "Percentage of Variance Explained") + ggtitle("PCA on Unscaled Data")
+
+# cumulative var plot
+fviz_eig(pr.out)
+
+# contribution of variables on unscaled data
+fviz_pca_var(pr.out,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "First Principal Component (47.1%)", y = "Second Principal Component (38.0%)") + ggtitle("Variables - PCA - Unscaled Data")
+
+```
+Indeed, the principal loadings are different when the variables are not scaled to have mean zero and standard deviation one, as shown above. Observe that the first principal component places the largest weight on the variable Delicatessen, whereas the second principal component places most of its weight on the variable Detergents/Paper. 
+
+By far, these two variables have the largest variances among all variables (13.17 and 10.94, respectively). Their variances are about ten times higher than the variances of other variables. For example, the variance for the other four variables is comparably very small: Fresh (0.71), Milk (0.21), Grocery (2.86), Frozen (0.47). Therefore, when unscaled, the loading vector places much less weight on these variables. As predicted, the contributions of Delicatessen and Detergents/Paper variables are incredibly high. When comparing this result with the previous one, it can be seen that scaling does indeed have a substantial effect on the results obtained.
+
+## PCA on imputed data 1
+
+```{r}
+## 5.1 Using manual ----
+## check to use covariance matrix or correlation matrix (scale the data)
+
+sd <- apply(completed_dat2, 2, sd)
+sd
+
+var.means <- apply(completed_dat2, 2, mean)
+var.means
+
+## There are on average as twice as many Delicatessen as Grocery, and more than 6 times as many Delicatessen as Frozen
+
+var.variance <-apply(completed_dat2, 2, var)
+var.variance
+
+## Not suprisingly, the variablese also have vastly different variances: the Delicatessen by far has the largest mean and variance. If we failed to scale the variables before performing PCA, then most of the principal components observed would be driven by the Delicatessen varuable. Thus, it is important to standardize the variables to have mean zero and standard deviation one before performing PCA.
+
+## the variables should be scaled/correlation matrix used
+
+S <- cor(completed_dat2)
+eigdec <- eigen(S)
+eigdec
+
+# eigenvalues/ variances
+eig <- eigdec$values
+eig
+
+# eigenvectors/ PC loadings
+pc_loading <- eigdec$vectors
+rownames(pc_loading) <- colnames(completed_dat2)
+pc_loading
+
+# the proportion of variance explained
+eig <- eigdec$values
+variance <- eig*100/sum(eig)
+
+# cumulative variances
+cumvar <- cumsum(variance)
+eig2 <- data.frame(eig = eig,
+                   variance = variance,
+                   cumvariance = cumvar)
+eig2
+
+# scree plot
+par(mfrow = c(1, 2))
+barplot(eig2[, 2],
+        names.arg = 1:nrow(eig2),
+        xlab = "Principal Component",
+        ylab = "Percentage of Variance Explained",
+        col = "steelblue")
+lines(x = 1:nrow(eig2),
+      eig2[, 2],
+      type = "b", 
+      col = "red",
+      pch = 16)
+
+# cumvar scree plot
+barplot(eig2[, 3],
+        names.arg = 1:nrow(eig2),
+        xlab = "Principal Component",
+        ylab = "Cumulative Percentage of Variance Explained",
+        col = c("#225ea8", "#1d91c0","#41b6c4",
+                "#7fcdbb", "#c7e9b4", "#edf8b1"))
+
+lines(x = 1:nrow(eig2),
+      eig2[, 3],
+      type = "b", 
+      col = "red",
+      pch = 16)
+
+pc_score = as.matrix(scale(completed_dat))%*% pc_loading
+colnames(pc_score) <- paste0("PC", 1:6)
+pc_score[1:4,]
+
+
+pairs.panels(pc_score,
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB",
+             density = TRUE,  # show density plots
+             ellipses = TRUE # show correlation ellipses
+)
+
+
+
+# Using Factoextra library 
+
+
+pr.out <- prcomp(completed_dat2,
+                 scale = TRUE)
+names(pr.out)
+summary(pr.out)
+
+#PC loadings
+pr.out$rotation
+
+#PC score
+pr.out$x
+dim(pr.out$x)
+
+# sd of each PC
+pr.out$sdev
+
+# scree plot
+fviz_screeplot(pr.out, addlabels = TRUE, barfill = c("#225ea8", "#1d91c0","#41b6c4",
+                                                      "#7fcdbb", "#c7e9b4", "#edf8b1"), 
+                                                     barcolor = c("#0c2c84", "#1d91c0","#41b6c4",
+                                                                  "#7fcdbb", "#c7e9b4", "#edf8b1")) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Principal Component", y = "Percentage of Variance Explained")
+
+
+var <- get_pca_var(pr.out)
+var$cor
+var$cos2 # quality of representation
+var$contrib # contribution of each var to PCs
+
+
+
+# Individuals with a similar profile are grouped together 
+fviz_pca_ind(pr.out,
+             col.ind = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "First Principal Component (48.7%)", y = "Second Principal Component (17.4%)")
+
+fviz_pca_ind(pr.out,
+             col.ind = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE,
+             axes = c(2, 3))+ theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Second Principal Component (17.4%)", y = "Third Principal Component (16.0%)")
+
+
+
+# graph of variables: positive correlated variables point to the same side  of the plot; negatively correlated variablse point to the opposite sides of the graph
+
+fviz_pca_var(pr.out,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "First Principal Component (48.7%)", y = "Second Principal Component (17.4%)")
+
+fviz_pca_var(pr.out,
+                   col.var = "contrib",
+                   gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+                   repel = TRUE,
+                   axes = c(2, 3))+ theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Second Principal Component (17.4%)", y = "Third Principal Component (16.0%)")
+
+
+
+# biplot of individuals and variables
+
+
+fviz_pca_biplot(pr.out, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "cos2",  
+                # Individuals color
+                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "First Principal Component (48.7%)", y = "Second Principal Component (17.4%)")
+
+fviz_pca_biplot(pr.out, repel = TRUE,
+                axes = c(2, 3),
+                col.var = "#2E9FDF", # Variables color
+                 # Individuals color
+                col.ind = "cos2",  
+                # Individuals color
+                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07")
+) + theme(plot.title = element_text(face = "bold", h = 0.5)) + labs(x = "Second Principal Component (17.4%)", y = "Third Principal Component (16.0%)")
+
+
+# Proportion of variance explained
+summary(pr.out)
+plot(pr.out)
+
+
+
+
+
+
+# Total cos2 of variables on Dim.1 and Dim.3
+fviz_cos2(pr.out, choice = "var", axes = 1:2)
+
+## Note that, a high cos2 indicates a good representation of the variable on the principal component. In this case the variable is positioned close to the circumference of the correlation circle.
+
+## A low cos2 indicates that the variable is not perfectly represented by the PCs. In this case the variable is close to the center of the circle.
+
+
+# a more elegant biplot
+
+
+fviz_pca_biplot(pr.out,
+                label = "var", axes = c(1, 2),
+                col.ind = "cos2",
+                col.var = "red", repel = TRUE
+) + labs(x = "First Principal Component", 
+         y = "Second Principal Component",
+         title = "PCA biplot of variables and individuals") +
+  theme(plot.title =  element_text(hjust = 0.5,
+                                   face = "bold")
+        ) + scale_color_gradient2(low = "white",
+                                  mid = "blue",
+                                  high = "red",
+                                  midpoint = 0.6)
+
+# color by cos2 values: quality on the factor map
+fviz_pca_var(pr.out, 
+             col.var = "cos2",
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), 
+             repel = TRUE) + # Avoid text overlapping 
+  labs(x = "First Principal Component", 
+  y = "Second Principal Component",
+title = "PCA biplot of variables") +
+  theme(plot.title =  element_text(hjust = 0.5,
+                                   face = "bold"))
+```
+# Clustering analysis
+```{r}
+dat.scaled <- scale(completed_dat)
+head(dat.scaled)
+
+dat.scaled2 <- scale(completed_dat2)
+head(dat.scaled2)
+```
+
+# find optimal number of clusters 
+```{r}
+fviz_nbclust(dat.scaled,
+             kmeans,
+             method = "wss") +
+  theme(plot.title = element_text(h = 0.5,
+                                  face = "bold"))+
+  geom_vline(xintercept = 4,
+             linetype = "dashed",
+             color = "steelblue", size = 0.5)
+
+fviz_nbclust(dat.scaled2,
+             kmeans,
+             method = "wss") + ggtitle("Elbow Method") +
+  theme(plot.title = element_text(h = 0.5, face = "bold", size = 12)) 
+
+fviz_nbclust(dat.scaled2,
+                   kmeans,
+                   method = "silhouette") + ggtitle("Average Silhoutte Method") +
+  theme(plot.title = element_text(h = 0.5, face = "bold", size = 12))
+
+
+
+# silhouttee plot for k-means
+library(cluster)
+set.seed(123)
+km.res <- kmeans(dat.scaled2,
+                 2,
+                 nstart = 25)
+
+sil <- silhouette(km.res$cluster, dist(dat.scaled2))
+
+head(sil[, 1:3], 5)
+
+fviz_silhouette(sil, palette = "jco", ggtheme = theme_classic()) + theme(plot.title = element_text(h = 0.5, face = "bold", size = 12))
+
+# k = 5
+set.seed(123)
+km.res2 <- kmeans(dat.scaled2,
+                 5,
+                 nstart = 25)
+
+sil2 <- silhouette(km.res2$cluster, dist(dat.scaled2))
+
+head(sil[, 1:3], 5)
+
+fviz_silhouette(sil2, palette = "jco", ggtheme = theme_classic()) + theme(plot.title = element_text(h = 0.5, face = "bold", size = 12))
+
+
+# compute k-means with k = 2
+set.seed(123)
+km.res1 <- kmeans(dat.scaled2, 1, nstart = 25)
+km.res <- kmeans(dat.scaled2,
+                 2,
+                 nstart = 25)
+set.seed(123)
+km.res2 <- kmeans(dat.scaled2,
+                 5,
+                 nstart = 25)
+names(km.res)
+km.res
+head(km.res$cluster, 4) # cluster no. of each observation
+
+km.res$size # size of clusters
+
+#cluster means
+km.res$centers
+
+## the total variability explained by the 5 clusters is 31.5%
+
+# compute the mean of each variables by clusters using original data
+aggregate(completed_dat, by = list(cluster = km.res$cluster), mean)
+
+aggregate(completed_dat2, by = list(cluster = km.res2$cluster), mean)
+
+# Visualize kmeans clustering
+fviz_cluster(km.res, dat.scaled2, ellipse.type = "norm", palette = "Set2", ggtheme = theme_minimal()) + ggtitle ("K-means clustering with k = 2") + labs(x = "First Principal Component (48.8%)", y = "Second Principal Component (17.0%)") + theme(plot.title = element_text(face = "bold", h = 0.5))
+
+
+
+```
+## K-means clustering on the first 3 PCs 
+```{r}
+pr.out <- prcomp(dat.scaled)
+
+
+set.seed(123)
+kmean.out <- kmeans(pr.out$x[, c(1, 2)],
+                    centers = 4, 
+                    nstart = 25)
+
+fviz_cluster(kmean.out, pr.out$x[,c(1,2)], 
+             ellipse.type = "norm") + ggtitle("Cluster Plot with K = 4") +
+  labs(x = "First Principal Component (48.8%)", y = "Second Principal Component (17.0%)") +theme(plot.title = element_text(h = 0.5)) 
+
+set.seed(1234)
+kmean.out <- kmeans(pr.out$x[, c(2, 3)],
+                    centers = 4, 
+                    nstart = 25)
+
+fviz_cluster(kmean.out, pr.out$x[,c(2,3)], 
+             ellipse.type = "norm")  + ggtitle("Cluster Plot with K = 4") +labs(x = "Second Principal Component (17.0%)", y = "Third Principal Component (16.7%)") +theme(plot.title = element_text(h = 0.5))
+
+
+
+```
+## K-medoids using PAM algorithms 
+```{r}
+
+# optimal number for k medoids
+plt1 <- fviz_nbclust(dat.scaled2,
+             pam,
+             method = "wss") + ggtitle("Elbow Method") +
+  theme(plot.title = element_text(h = 0.5, size = 12, 
+                                  face = "bold"))
+plt2 <- fviz_nbclust(dat.scaled2,
+             pam,
+             method = "silhouette") +ggtitle("Average Silhoutte Method") +
+  theme(plot.title = element_text(h = 0.5, size = 12,
+                                  face = "bold"))
+
+library(cluster)
+set.seed(123)
+pam.res <- pam(dat.scaled2, 2)
+print(pam.res) 
+
+dd <- cbind(completed_dat2, cluster = pam.res$clustering)
+head(dd, n =3)
+pam.res$medoids
+```
+### compare silhoutte for k means and k medoids
+```{r}
+set.seed(123)
+pam.res <- pam(dat.scaled2, 2)
+pam.sil <- silhouette(pam.res$clustering, dist(dat.scaled2))
+
+fviz_silhouette(pam.sil, palette = "jco", ggtheme = theme_classic()) + theme(plot.title = element_text(h = 0.5, face = "bold", size = 12)) + labs(y = "K-medoids Silhouette")
+
+set.seed(123)
+km.res <- kmeans(dat.scaled2,
+                 2,
+                 nstart = 25)
+
+sil <- silhouette(km.res$cluster, dist(dat.scaled2))
+
+
+fviz_silhouette(sil, palette = "jco", ggtheme = theme_classic()) + theme(plot.title = element_text(h = 0.5, face = "bold", size = 12)) + labs(y = "K-means Silhouette")
+```
+## visualizing PAM clusters
+```{r}
+# k= 2
+set.seed(123)
+pam.res <- pam(dat.scaled2, 2)
+fviz_cluster(pam.res, pr.out$x[, c(1, 2)],
+             ellipse.type = "norm") + ggtitle("Cluster plot with k = 2") +
+
+  labs(x = "First Principal Component (48.7%)", y = "Second Principal Component (17.4%)") +theme(plot.title = element_text(h = 0.5, size = 12)) 
+
+fviz_cluster(pam.res, pr.out$x[,c(2,3)], 
+             ellipse.type = "norm")  + ggtitle("Cluster plot with k = 2") +labs(x = "Second Principal Component (17.4%)", y = "Third Principal Component (16.0%)") +theme(plot.title = element_text(h = 0.5))
+
+pam.res$id.med
+
+# k = 5
+set.seed(123)
+pam.res2 <- pam(dat.scaled2, 5)
+pam.res2$medoids
+fviz_cluster(pam.res2, pr.out$x[, c(1, 2)],
+                   ellipse.type = "norm") + ggtitle("Cluster plot with k = 5") +labs(x = "First Principal Component (48.7%)", y = "Second Principal Component (17.4%)") +theme(plot.title = element_text(h = 0.5, size = 12)) 
+
+fviz_cluster(pam.res2, pr.out$x[,c(2,3)], 
+                   ellipse.type = "norm")  + ggtitle("Cluster plot with k = 5") +labs(x = "Second Principal Component (17.4%)", y = "Third Principal Component (16.0%)") +theme(plot.title = element_text(h = 0.5))
+
+
+## rows 146 and 351 are used as the medoids; the columns are the variables
+
+```
+
+
+# Hierarchical Clustering 
+
+## Optimal number of clusters 
+```{r}
+#wss method
+fviz_nbclust(dat.scaled2, FUN = hcut, method = "wss") + ggtitle("Elbow Method")+
+  theme(plot.title = element_text(h = 0.5, face = "bold", size = 12))
+
+# avg silhoutte method
+fviz_nbclust(dat.scaled2, FUN = hcut, method = "silhouette") + ggtitle("Average Silhouette Method") +
+  theme(plot.title = element_text(h = 0.5, size = 12, face = "bold"))
+```
+# Agglomerative Clusterings 
+```{r}
+# load required libraries
+library(tidyverse) # data manipulation
+library(cluster)  # clustering algorithms
+library(factoextra) # clustering visualization
+library(dendextend) # for comparing two dendrograms
+library(igraph)
+# Compute distances
+dd <- dist(dat.scaled2, method = "euclidean")
+
+# Complete linkage
+hc.complete <- hclust(dd, method = "complete")
+hc.complete
+
+# Average linkage
+hc.average <- hclust(dd, method = "average")
+hc.average
+
+# Single linkage
+hc.single <- hclust(dd, method = "single")
+hc.single
+
+# Ward Method
+hc.ward <- hclust(dd, method = "ward.D2")
+hc.ward
+
+# Plot dendrograms for each
+par(mfrow = c(2, 2))
+plot(hc.complete, main = "Complete Linkage", xlab = "", sub = "", cex = .6, hang = -1)
+
+plot(hc.average, main = "Average Linkage", xlab = "", sub = "", cex = .6, hang = -1)
+
+plot(hc.single, main = "Single Linkage", xlab = "", sub = "", cex = .6, hang = -1)
+
+plot(hc.ward, main ="Ward Method", xlab = "", sub = "", cex = .6, hang = -1)
+# Complete Linkage only
+par(mfrow = c(1, 1))
+
+xsc <- scale(completed_dat2)
+
+plot(hclust(dist(xsc), method = "complete"), main = "Hierarchical Clustering with Scaled Features", xlab = "", sub = "", cex = .6, hang = -1)
+
+# cut dendrogram at height = 5
+hc.clusters <- cutree(hc.complete, 5)
+abline(h = 5, col = "red", lty = 3,lwd = 3)
+
+# compute with agnes
+hc2 <- agnes(dat.scaled2, method = "complete")
+
+# agglomerative coefficient
+hc2$ac # 0.9115044
+
+# methods to assess
+m <- c( "average", "single", "complete", "ward")
+names(m) <- c( "average", "single", "complete", "ward")
+
+# function to compute coefficient
+ac <- function(x) {
+  agnes(dat.scaled2, method = x)$ac
+}
+
+map_dbl(m, ac)
+#average    single  complete      ward 
+#0.8205011 0.6646577 0.9115044 0.9744263 
+
+# visualize dendrogram for ward method
+par(mfrow = c(1, 1))
+hc3 <- agnes(dat.scaled2, method = "ward")
+pltree(hc3, cex = 0.6, hang = -1, main = "Dendrogram of Agnes", xlab = "Ward Method", sub = "")
+```
+
+## compare cut from kmeans and hc clusters
+```{r}
+set.seed(123)
+km.out <- kmeans(dat.scaled2, 2, nstart = 25)
+km.clusters = km.out$cluster
+
+hc.out <- hclust(dist(dat.scaled2), method = "ward.D2")
+hc.clusters = cutree(hc.out, 2)
+
+table(km.clusters, hc.clusters)
+
+aggregate(completed_dat2, by = list(cluster = hc.clusters), mean)
+```
+## compare kmedoids from hierarchical
+```{r}
+pam.clusters <- pam.res$clustering
+table(pam.clusters, hc.clusters)
+```
+
+## perform hierarchical clustering on first three PCs
+```{r}
+hc.out <- hclust(dist(pr.out$x[, 1:3]), method = "ward.D2")
+plot(hc.out)
+
+
+# beautiful neuron
+library(igraph)
+fviz_dend(hc.out, k = 5, k_colors = "jco",
+          type = "phylogenic", repel = TRUE)
+```
+# Divisive Hierarchical Clustering 
+```{r}
+
+# compute it with diana function; no need to specify the method
+hc4 <- diana(dat.scaled2)
+hc4$dc ##0.9001963
+fviz_dend(hc4, k = 2, k_colors = "jco",
+          type = "phylogenic", repel = TRUE)
+# plot the dendrogram
+pltree(hc4, cex = 0.6, hang = -1, main = "Dendrogram of Diana", xlab = "", sub = "")
+fviz_dend(hc4, k = 2, k_colors = "jco",
+          type = "phylogenic", repel = TRUE)
+# cut diana() tree into 2 groups
+diana.clusters <- cutree(as.hclust(hc4), k = 2)
+table(km.clusters, diana.clusters)
+table(pam.clusters, diana.clusters)
+# using ggplot
+dend <- completed_dat2 %>% 
+  scale %>% 
+  diana() %>% 
+  as.dendrogram
+
+dend %>% set("branches_k_color", k = 2) %>% 
+  plot(main = "Dendrogram of Diana", leaflab = "none")
+abline(h = 8, lty = 3)
+```
+## compare hierarchical clustering with complete vs ward method
+```{r}
+# Compute distance matrix
+res.dist <- dist(dat.scaled2, method = "euclidean")
+
+# Compute 2 hierarchical clusterings
+hc1 <- hclust(res.dist, method = "complete")
+hc2 <- hclust(res.dist, method = "ward.D2")
+
+# Create two dendrograms
+dend1 <- as.dendrogram (hc1)
+dend2 <- as.dendrogram (hc2)
+
+tanglegram(dend1, dend2)
+
+# customise tanglegram
+dend_list <- dendlist(dend1, dend2)
+
+tanglegram(dend1, dend2,
+           highlight_distinct_edges = FALSE, # Turn-off dashed lines
+           common_subtrees_color_lines = TRUE, # Turn-off line colors
+           common_subtrees_color_branches = TRUE, # Color common branches 
+           highlight_branches_lwd = FALSE,
+           main = paste("Entanglement =", round(entanglement(dend_list), 2)),
+           lwd = 0.8,
+           main_left = "Complete Method",
+           main_right = "Ward Method",
+           lab.cex = NULL,
+) %>% set("by_labels_branches_lwd", 0.5)
+
+
+# compare 2 clusters obtained from hierarchical clustering and K-means clustering
+
+set.seed(2)
+km.out <- kmeans(dat.scaled2, 2, nstart = 20)
+km.clusters <- km.out$cluster
+table(km.clusters, hc.clusters)
+
+# correlation-based distance
+dd <- as.dist(1-cor(t(xsc)))
+
+
+plot(hclust(dd, method = "complete"), main = "Complete Linkage with Correlation-Based Distance", xlab = "", sub = "", cex = .9)
+
+##6.2 on first 3 PCs ----
+hc.out=hclust(dist(pr.out$x[,1:3]))
+
+plot(hc.out,  main="Hierarchical Clustering on First
+Three Score Vectors ", sub = "", xlab = "")
+
+abline(h = 5, col = "red", lty = 3,lwd = 3)
+```
+
+# BIC based modelling
+```{r}
+library(mclust)
+mc1 <- Mclust(dat.scaled2, G = 1)
+mc1$bic = -5635.771
+
+mc2 <- Mclust(dat.scaled2, G = 2)
+mc2$bic #-5651.584 # (EEE,2) 
+summary(mc2)
+
+mc3 <- Mclust(dat.scaled2, G = 3)
+mc3$bic # -5666.159 # (EEE,3) 
+summary (mc3)
+
+mc4 <- Mclust(dat.scaled2, G = 4)
+mc4$bic # -5696.416 # (EEE,4) 
+
+mc5 <- Mclust(dat.scaled2, G = 5)
+mc5$bic # -5726.493 # (EEE,5) 
+
+
+mc6 <- Mclust(dat.scaled2, G = 6)
+mc6$bic # -5755.349
+
+mc7 <- Mclust(dat.scaled2, G = 7)
+mc7$bic # -5775.658
+summary(mc7)
+
+mc8 <- Mclust(dat.scaled2, G = 8)
+mc8$bic # -5800.048 
+summary(mc8)
+
+mc9 <- Mclust(dat.scaled2, G = 9)
+mc9$bic # -5800.048 
+summary(mc9)
+# G = 2 has the highest BIC value with the model option EEE, followed by 3, 4, 5
+
+BIC <- mclustBIC(dat.scaled2)
+plot(BIC)
+summary(BIC)
+# Best BIC values:
+#EEE,1     EEV,1     EVE,1
+#BIC      -5635.771 -5635.771 -5635.771
+#BIC diff     0.000     0.000     0.000
+
+mod1 <- Mclust(dat.scaled2, x = BIC)
+summary(mod1, parameters = TRUE)
+# log-likelihood   n df       BIC       ICL
+#-2735.714 440 27 -5635.771 -5635.771
+
+ICL <- mclustICL(dat.scaled2)
+summary(ICL)
+
+
+# Best ICL values:
+#EEE,1     EEV,1     EVE,1
+#ICL      -5635.771 -5635.771 -5635.771
+#ICL diff     0.000     0.000     0.000
+LRT <- mclustBootstrapLRT(dat.scaled2, modelName = "EEE")
+LRT
+mc2$classification
+plot(mc2, what = "classification")
+plot(mc2, what = "density")
+table(mc2$classification)
+# EEE means that the clusters have the same volume, shape and orientation in p-dimensional space
+
+library(mclust)
+
+
+G <- c(2,3,4,5,6)
+modelNames <- c("EII", "VII", "EEI", "VEI", "EVI", "VVI", "EEE", "EEV", "VEV", "VVV")
+
+nnr <- length(G)*length(modelNames)
+resu  <- array(data=NA, dim=c(nnr,3), dimnames=list(paste(1:nnr),c("G", "modelNames", "BIC")))
+
+counter <- 1
+for (i in G){
+  for(j in modelNames){
+    mc_option <- Mclust(dat.scaled2, G = i, modelNames = j)
+    resu[counter, 1] <- as.numeric(i)
+    resu[counter, 2] <- paste(j)
+    resu[counter, 3] <- as.numeric(mc_option$BIC)
+    if (counter < nrow(resu)) counter <- counter+1
+  }
+}
+
+G <- as.numeric(resu[,1])
+bic <- as.numeric(resu[,3])
+model <- resu[,2]
+dat <- data.frame(G,bic, model)
+
+aa <- subset(dat, bic == max(bic))
+aa #  G       bic model
+#7 2 -5651.584   EEE
+
+mc <- Mclust(dat.scaled2, G = 2, modelNames = "EEE") # Model-based-clustering
+summary(mc)
+table(hc.clusters, mc$classification)
+plot(mc, what = "classification")
+plot(mc, what = "uncertainty")
+
+
+fviz_cluster(mc, data = dat.scaled2,
+             palette = c("#FFBF00", "#29BF12"),
+             ellipse.type = "euclid", # Concentration ellipse
+             star.plot = TRUE, # Add segments from centroids to items
+             repel = TRUE, # Avoid label overplotting (slow)
+             ggtheme = theme_minimal() 
+) +labs(x = "First Principal Component (48.7%)", y =  "Second Principal Component (17.4%)") + ggtitle("Model-based Clustering") + theme(plot.title = element_text(h = 0.5, size = 12, face = "bold")) 
+
+fviz_cluster(mc, data = dat.scaled2, axes = c(2, 3),
+             palette = c("#FFBF00", "#29BF12"),
+             ellipse.type = "euclid", # Concentration ellipse
+             star.plot = TRUE, # Add segments from centroids to items
+             repel = TRUE, # Avoid label overplotting (slow)
+             ggtheme = theme_minimal() 
+) + labs(x = "Second Principal Component (17.4%)", y =  "Third Principal Component (16.0%)") + ggtitle("Model-based Clustering") + theme(plot.title = element_text(h = 0.5, size = 12, face = "bold")) 
+```
+# optimal model
+```{r}
+mc_ooptimal <- Mclust(dat.scaled2)
+summary(mc_ooptimal)
+plot(mc_ooptimal, what = "BIC")
+plot(data = dat, x = as.factor(G), y = bic, type = "l")
+```
+
+# Cluster Validation 
+```{r}
+library(clValid)
+clmethods <- c("hierarchical","kmeans","pam", "diana", "model")
+intern <- clValid(dat.scaled2, nClust = 2:6,
+                  clMethods = clmethods, validation = "internal")
+# Summary
+summary(intern)
+
+layout(matrix(c(1,1,2,3), 2, 2, byrow = TRUE))
+plot(intern)
+
+# Stability measures
+clmethods <- c("hierarchical","kmeans","pam", "diana", "agnes", "model")
+stab <- clValid(dat.scaled2, nClust = 2:6, clMethods = clmethods,
+                validation = "stability")
+               
+```
